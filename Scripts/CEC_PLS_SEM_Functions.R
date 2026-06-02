@@ -83,6 +83,14 @@ CEC_PLS_SEM <-function(X, R, epsilon, phi,rho, constrained, MaxIter){
       ####
     }
     
+    # ---- Column normalization + zero check ----
+    norm_res <- normalize_columns(W)
+    W <- norm_res$W
+    
+    if (norm_res$zero_column) {
+      stop("Algorithm terminated due to zero column in W.")
+    }
+    
     # Update scaled variable
     if (constrained==1){
       U <- compute_U(U, W, P, rho)
@@ -95,7 +103,7 @@ CEC_PLS_SEM <-function(X, R, epsilon, phi,rho, constrained, MaxIter){
     
     #primary & secondary relative residuals
     r1 <- sum((W-P)^2)/sum(W^2)
-    r2 <- sum((W-Wold)^2)/sum(U^2)
+    r2 <- sum((W-Wold)^2)/(sum(U^2)+1e-9)
     message('Primary relative residual:  ', r1)
     message('Secondary relative residual:  ', r2)
     
@@ -143,7 +151,7 @@ Initialize_parameters <- function(X, R, phi) {
   
   # Weighted combination: 0.7 * SVD + 0.3 * random
   W0 <- 0.97*W_svd + 0.03*W_rand
-  Wind <- order(W0)
+  Wind <- order(abs(W0))#absolute value needed!
   W0[Wind[1:(J*R-phi)]] <- 0
   
   U <- matrix(0, nrow = J, ncol = R) # Initialize to 0
@@ -192,16 +200,55 @@ compute_B <- function(X,W,P, alpha,XTX){
   return(B)
 }
 
-compute_W_new <- function(X, R, P, B, alpha, rho, U, phi_prop) {
+#compute_W_new <- function(X, R, P, B, alpha, rho, U, phi_prop) {
 
+#  W_new <- ((2 * alpha * B) + rho * (P - U)) / (2 * alpha + rho)
+#  # Coefficients with smallest bjr^2 + (Ujr-Pjr)^2 set to 0
+#  term1 <- alpha*(B^2)
+#  term2 <- 0.5*rho*((U-P)^2)
+#  impind <- order(term1+term2,decreasing = FALSE)
+#  J <- dim(X)[2]
+#  W_new[impind[1:(J*R-phi_prop)]] <- 0
+
+#  return(W_new)
+#}
+
+compute_W_new <- function(X, R, P, B, alpha, rho, U, phi_prop) {
+  
+  # Unconstrained quadratic minimizer (your current tilde W)
   W_new <- ((2 * alpha * B) + rho * (P - U)) / (2 * alpha + rho)
-  # Coefficients with smallest bjr^2 + (Ujr-Pjr)^2 set to 0
-  term1 <- alpha*(B^2)
-  term2 <- 0.5*rho*((U-P)^2)
-  impind <- order(term1+term2,decreasing = FALSE)
-  W_new[impind[1:(J*R-phi)]] <- 0
+  
+  # ---- Correct cardinality projection: keep top K entries of |W_new| ----
+  K <- phi_prop
+  n_total <- length(W_new)
+  
+  if (K < n_total) {
+    # indices of entries sorted by increasing |W_new|
+    impind <- order(abs(W_new), decreasing = FALSE)
+    W_new[impind[1:(n_total - K)]] <- 0
+  }
+  # if K >= n_total, keep everything
   
   return(W_new)
+}
+
+normalize_columns <- function(W, tol = 1e-10) {
+  
+  R <- ncol(W)
+  
+  for (r in 1:R) {
+    norm_val <- sqrt(sum(W[, r]^2))
+    
+    if (norm_val < tol) {
+      warning(paste("Column", r, 
+                    "of W has (near) zero norm. Algorithm stopped."))
+      return(list(W = W, zero_column = TRUE))
+    }
+    
+    W[, r] <- W[, r] / norm_val
+  }
+  
+  return(list(W = W, zero_column = FALSE))
 }
 
 compute_U <- function(U,W,P,rho){
@@ -281,7 +328,7 @@ align_components <- function(est, true) {
       correlation_val <- cor(aligned_est[, j], true[, j])
       
       # check if corr is NA 
-    if (!is.na(correlation_val) && correlation_val < 0) {
+      if (!is.na(correlation_val) && correlation_val < 0) {
         aligned_est[, j] <- -aligned_est[, j]
       }
     }
