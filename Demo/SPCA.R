@@ -10,7 +10,7 @@ getwd()
 source("../Scripts/SPCA_Functions.R")
 library(dplyr)
 
-# list of all data folders we want to run CEC-PLS-SEM for
+# list of all data folders we want to run SPCA for
 folders <- c("../Scripts/DATA-R-W-Sparse", "../Scripts/DATA-R-P-Sparse")
 results_list <- list()
 
@@ -38,7 +38,7 @@ for (f in folders) {
     for (m in 1:2) {
       set.seed(100 + m)
       # Change constrained to 0 or 1 here
-      res <- CEC_PLS_SEM(X, R, 1e-8, phi, rho, constrained=1, MaxIter=100)
+      res <- CEC_PLS_SEM(X, R, 1e-8, phi, rho, constrained=0, MaxIter=100)
       if (res$Residual < best_loss) { best_loss <- res$Residual; best_res <- res }
     }
     

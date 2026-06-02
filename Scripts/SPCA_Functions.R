@@ -235,7 +235,7 @@ normalize_columns <- function(W, tol = 1e-10) {
     
     if (norm_val < tol) {
       warning(paste("Column", r, 
-                    "of W has (near) zero norm. Algorithm stopped."))
+                    "of W has zero norm. Algorithm stopped."))
       return(list(W = W, zero_column = TRUE))
     }
     
