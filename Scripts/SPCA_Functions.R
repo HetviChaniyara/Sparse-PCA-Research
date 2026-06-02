@@ -83,7 +83,6 @@ CEC_PLS_SEM <-function(X, R, epsilon, phi,rho, constrained, MaxIter){
       ####
     }
     
-    # ---- Column normalization + zero check ----
     norm_res <- normalize_columns(W)
     W <- norm_res$W
     
@@ -137,7 +136,6 @@ CEC_PLS_SEM <-function(X, R, epsilon, phi,rho, constrained, MaxIter){
 ########################################################################################################################################
 # Helper Functions
 
-#Initialize_parameters <- function(X, R, rho) {
 Initialize_parameters <- function(X, R, phi) {
   
   J <- dim(X)[2] # number of columns
@@ -200,8 +198,8 @@ compute_B <- function(X,W,P, alpha,XTX){
   return(B)
 }
 
-#compute_W_new <- function(X, R, P, B, alpha, rho, U, phi_prop) {
-
+# compute_W_new <- function(X, R, P, B, alpha, rho, U, phi_prop) {
+# 
 #  W_new <- ((2 * alpha * B) + rho * (P - U)) / (2 * alpha + rho)
 #  # Coefficients with smallest bjr^2 + (Ujr-Pjr)^2 set to 0
 #  term1 <- alpha*(B^2)
@@ -209,16 +207,13 @@ compute_B <- function(X,W,P, alpha,XTX){
 #  impind <- order(term1+term2,decreasing = FALSE)
 #  J <- dim(X)[2]
 #  W_new[impind[1:(J*R-phi_prop)]] <- 0
-
+# 
 #  return(W_new)
-#}
+# }
 
 compute_W_new <- function(X, R, P, B, alpha, rho, U, phi_prop) {
   
-  # Unconstrained quadratic minimizer (your current tilde W)
   W_new <- ((2 * alpha * B) + rho * (P - U)) / (2 * alpha + rho)
-  
-  # ---- Correct cardinality projection: keep top K entries of |W_new| ----
   K <- phi_prop
   n_total <- length(W_new)
   
@@ -227,7 +222,6 @@ compute_W_new <- function(X, R, P, B, alpha, rho, U, phi_prop) {
     impind <- order(abs(W_new), decreasing = FALSE)
     W_new[impind[1:(n_total - K)]] <- 0
   }
-  # if K >= n_total, keep everything
   
   return(W_new)
 }

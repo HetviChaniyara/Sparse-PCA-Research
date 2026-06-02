@@ -5,7 +5,7 @@
 current_working_dir <- dirname(rstudioapi::getActiveDocumentContext()$path)
 setwd(current_working_dir)
 
-source("../Scripts/CEC_PLS_SEM_Functions.R")
+source("../Scripts/SPCA_Functions.R")
 library(dplyr)
 library(elasticnet) 
 
