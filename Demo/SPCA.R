@@ -7,7 +7,7 @@ current_working_dir <- dirname(rstudioapi::getActiveDocumentContext()$path)
 setwd(current_working_dir)
 getwd()
 
-source("../Scripts/CEC_PLS_SEM_Functions.R")
+source("../Scripts/SPCA_Functions.R")
 library(dplyr)
 
 # list of all data folders we want to run CEC-PLS-SEM for
