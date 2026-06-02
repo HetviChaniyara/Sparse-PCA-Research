@@ -83,8 +83,8 @@ results_sim1_data1 <- foreach(i=1:nrow(design_matrix_replication),
                                 #
                                 P = P%*%diag(svd1$d[1:R])
                                 Xtrue = TruecScores%*%t(P)
-                                # W = ginv(Xtrue)%*%TruecScores
-                                W = P # Only change
+                                W = ginv(Xtrue)%*%TruecScores
+                          
                                 # Adding noice
                                 SSqXtrue =  sum(Xtrue^2)                        # sum squares of the data set
                                 EX = mvrnorm(I,mu= rep(0,J),Sigma = diag(1,J))  # EX = Error of X

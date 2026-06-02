@@ -80,10 +80,10 @@ results_sim1_data1 <- foreach(i=1:nrow(design_matrix_replication),
                                 
                                 # 6. 
                                 Z =  X%*%W # Component scores
-                                # P = t(X)%*%ginv(t(Z))
-                                # Psvd = svd((t(X)%*%X)%*%W)
-                                # P = Psvd$u%*%t(Psvd$v)
-                                P <- W # The only thing changed
+                                P = t(X)%*%ginv(t(Z))
+                                Psvd = svd((t(X)%*%X)%*%W)
+                                P = Psvd$u%*%t(Psvd$v)
+                                
                                 # 7. 
                                 Xtrue =  Z%*%t(P)
                                 
