@@ -45,7 +45,7 @@ for (f in folders) {
     #Z_scores <- X %*% W_aligned
     #P_aligned <- t(X) %*% Z_scores %*% solve(t(Z_scores) %*% Z_scores)
     ##### ADAPTED TO ORIGINAL ELASTICNET P
-    alpha <- X%*%t(X)%*%W_aligned
+    alpha <- t(X)%*%X%*%W_aligned
     z <- svd(alpha)
     P_aligned <- (z$u) %*% t(z$v)
     
@@ -83,6 +83,6 @@ for (f in folders) {
 # summarise results
 benchmark_summary <- do.call(rbind, benchmark_list) %>%
   group_by(Folder, n_variables, s_size, p_sparse, VAFx) %>%
-  summarise(across(where(is.numeric), mean, na.rm = TRUE), .groups = "drop")
+  summarise(across(where(is.numeric), \(x) mean(x, na.rm = TRUE)), .groups = "drop")
 
 write.csv(benchmark_summary, "all_elastic_net.csv", row.names = FALSE)
