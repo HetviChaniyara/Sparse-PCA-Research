@@ -1,7 +1,7 @@
-# CEC-PLS-SEM Research
+# TSPCA Research
 # Updated Version March 2026 Hetvi Chaniyara
-# Runs CEC-PLS-SEM for various data folders
-# Incorporates the changes as proposed in Katrijn's December 2025 version
+# Runs TSPCA for various data folders
+# Incorporates the changes of Katrijn's December 2025 version
 
 current_working_dir <- dirname(rstudioapi::getActiveDocumentContext()$path)
 setwd(current_working_dir)
@@ -11,25 +11,29 @@ source("../Scripts/SPCA_Functions.R")
 library(dplyr)
 
 # list of all data folders we want to run SPCA for
-folders <- c("../Scripts/DATA-R-W-Sparse", "../Scripts/DATA-R-P-Sparse")
+folders <- c("../Scripts/DATA-R-WP-Sparse")
 results_list <- list()
 
 for (f in folders) {
   # load the design parameters for the data
-  load(file.path(f, "Info_simulation.RData"))
-  design <- Info_simulation$design_matrix_replication
-  prefix <- ifelse(grepl("W-Sparse", f), "Wsparse", "Psparse")
   
-  for (i in 1:180) {
+  load(file.path(f, "Info_simulaiton.RData"))
+  design <- Info_simulation$design_matrix_replication
+  prefix <- ifelse(grepl("WP-Sparse", f), "WPsparse", "Psparse")
+  
+  # for progress updates
+  start_time <- Sys.time()
+  
+  for (i in 1:10800) {
     data_file <- file.path(f, paste0(prefix, i, ".RData"))
-    if(!file.exists(data_file)) {
-      cat("File missing:", data_file, "\n")
-      next
-    }
     load(data_file)
     
+    
     # initialize phi and rho
-    X <- out$X; R <- out$k; J <- ncol(X)
+    X <- out$X
+    # X <- out$X2
+    R <- out$k
+    J <- ncol(X)
     phi <- round((1 - design$p_sparse[i]) * J * R)
     rho <- sum(X^2) / R
     
@@ -43,36 +47,55 @@ for (f in folders) {
     }
     
     # metrics calculation
+    # Change to W2 if WPsparse
     W_aligned <- align_components(best_res$weights, out$W)
+    #change p to w2
     P_aligned <- align_components(best_res$loadings, out$P)
     selection <- evaluate_variable_selection(out$W, W_aligned)
     bvm_W <- compute_bias_variance_mse(out$W, W_aligned)
+    #change p to w2
     bvm_P <- compute_bias_variance_mse(out$P, P_aligned) 
     bvm_W_P <- compute_bias_variance_mse(W_aligned, P_aligned)
+    msd_W_P <- mean((W_aligned - P_aligned)^2)
     
+    # Storing results in the dataframe
     results_list[[length(results_list)+1]] <- data.frame(
       Folder = f, 
       Dataset = i, 
-      design[i,],
+      design[i, , drop = FALSE],
       Loss = best_res$Residual,
-      VAF = compute_vaf(X, best_res$weights, best_res$loadings),
+      FEV = compute_vaf(X, best_res$weights, best_res$loadings),
       Recovery_Rate = selection$recovery,
       MSE_W = bvm_W$mse,
       MSE_P = bvm_P$mse,
       Bias_W = bvm_W$bias,
       Bias_P = bvm_P$bias,
+      Var_W = bvm_W$variance,
+      Var_P = bvm_P$variance,
+      msd_W_P = msd_W_P,
       W_Corr = diag(cor(W_aligned, out$W)) %>% mean(),
       P_Corr = diag(cor(P_aligned, out$P)) %>% mean(), 
       Iterations = best_res$n_iterations,
       MSE_W_P = bvm_W_P$mse
     )
-    cat("Folder:", f, "Dataset:", i, "Complete\n")
+    
+    # flush memory
+    rm(X, W_aligned, P_aligned, best_res, selection, bvm_W, bvm_P, bvm_W_P, msd_W_P, out,res)
+    
+    # garbage collection
+    if (i %% 100 == 0) {
+      elapsed <- round(difftime(Sys.time(), start_time, units = "mins"), 2)
+      cat(sprintf("Folder: %s | Completed: %d / 10800 | Elapsed: %s mins\n", f, i, elapsed))
+      gc(verbose = FALSE)
+    }
   }
 }
 
-# summarise results
-final_summary <- do.call(rbind, results_list) %>%
-  group_by(Folder, n_variables, s_size, p_sparse, VAFx) %>%
-  summarise(across(where(is.numeric), mean, na.rm = TRUE), .groups = "drop")
+# # summarise results
+# cat("Compiling and writing summaries...\n")
+# final_summary <- do.call(rbind, results_list) %>%
+#   group_by(Folder, n_variables, s_size, p_sparse, VAFx) %>%
+#   summarise(across(where(is.numeric), mean, na.rm = TRUE), .groups = "drop")
 
-write.csv(final_summary, "all_constrained.csv", row.names = FALSE)
+write.csv(results_list, "W_penalised.csv", row.names = FALSE)
+cat("Process finished successfully!\n")
