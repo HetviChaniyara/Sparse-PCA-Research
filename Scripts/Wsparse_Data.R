@@ -1,4 +1,6 @@
-# W sparse data script adapted from Rosember Guerra 15-09-2019
+# W sparse using foreach
+# Rosember Guerra
+# 15-09-2019
 
 # install.packages("doParallel")    # Install doParallel package
 # install.packages("MASS")          # Install MASS package
@@ -23,12 +25,12 @@ dir.create("DATA-R-W-Sparse") # Directory to save the data
 set.seed(2019)
 
 # sparse PCA data simulation #
-VAFx = c(0.8,1)           # Proportion of explained variance
-p_sparse = c(0,0.5,0.8)         # Proportion of sparsity
-n_components = c(2)         # Number of components
+VAFx = c(0.8,.95,1)           # Proportion of explained variance
+p_sparse = c(0,.5,.8)         # Proportion of sparsity
+n_components = c(2,3)         # Number of components
 s_size = c(100,500)           # Sample size
 n_variables = c(10,100,1000)  # Number of variables
-n_replications = c(5)         # Number of repetitions
+n_replications = c(100)         # Number of repetitions
 
 
 
@@ -37,9 +39,9 @@ design_matrix <- expand.grid( n_variables=n_variables,s_size=s_size,p_sparse=p_s
 
 design_matrix_replication <- design_matrix[rep(1:nrow(design_matrix), times = n_replications), ]
 
-Info_simulation = list(n_data_sets = nrow(design_matrix_replication), n_replications  =n_replications,
+Infor_simulation = list(n_data_sets = nrow(design_matrix_replication), n_replications  =n_replications,
                         design_matrix_replication = design_matrix_replication)
-save(Info_simulation, file = "DATA-R-W-Sparse/Info_simulation.RData")
+save(Infor_simulation, file = "DATA-R-W-Sparse/Info_simulaiton.RData")
 
 
 results_sim1_data1 <- foreach(i=1:nrow(design_matrix_replication),
@@ -80,10 +82,9 @@ results_sim1_data1 <- foreach(i=1:nrow(design_matrix_replication),
                                 
                                 # 6. 
                                 Z =  X%*%W # Component scores
-                                P = t(X)%*%ginv(t(Z))
+                                #P = t(X)%*%ginv(t(Z)) 
                                 Psvd = svd((t(X)%*%X)%*%W)
                                 P = Psvd$u%*%t(Psvd$v)
-                                
                                 # 7. 
                                 Xtrue =  Z%*%t(P)
                                 
