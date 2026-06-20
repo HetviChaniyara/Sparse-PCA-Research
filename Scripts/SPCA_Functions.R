@@ -17,20 +17,38 @@ library(gtools)
 
 #############
 
-
-CEC_PLS_SEM <-function(X, R, epsilon, phi,rho, constrained, MaxIter){
+#' CEC-PLS-SEM
+#'
+#' @param X data of size IxJ
+#' @param R number of components
+#' @param epsilon tolerance for convergence
+#' @param phi number of nonzero weights
+#' @param rho penalty tuning parameter
+#' @param constrained 1/0 for constrained versus penalized setting (W=P)
+#' @param verbose TRUE/FALSE for printing info iterates or not
+#'
+#' @returns Component weights and loadings
+#' @export
+#'
+#' @examples
+CEC_PLS_SEM <-function(X, INIT=NULL, R, epsilon, phi,rho, constrained, MaxIter,verbose=F){
   
-  J = dim(X)[2] 
-  I = dim(X)[1] 
-  ssx <- sum(X^2)  
-  XtX <- t(X)%*%X  
+  J = dim(X)[2] # number of columns
+  I = dim(X)[1] # number of rows
+  ssx <- sum(X^2)  #caching
+  XtX <- t(X)%*%X  #caching
   iter <- 0
   convAO <- 0
   
   # Get initialized parameters
+  
   params <- Initialize_parameters(X,R,phi)
   alpha <- params$alpha
-  W <- params$W0
+  if (is.null(INIT)){
+    W <- params$W0
+  } else {
+    W <- INIT
+  }
   if (constrained==1){
     U <- params$U
   } else {
@@ -40,9 +58,7 @@ CEC_PLS_SEM <-function(X, R, epsilon, phi,rho, constrained, MaxIter){
   # Initialize matrices and lists
   T_scores <- matrix(nrow = I, ncol = R)
   Lossc <- 1
-  
-  Lossvec <- numeric(MaxIter + 1)
-  Lossvec[1] <- Lossc
+  Lossvec <- Lossc
   
   # Update Loop
   while (convAO == 0) {
@@ -55,7 +71,8 @@ CEC_PLS_SEM <-function(X, R, epsilon, phi,rho, constrained, MaxIter){
     P = compute_P_new(X,W,T_scores,U,rho,R)
     LossuP <- loss_function(X,W,P,rho,U)/ssx
     ####
-    #message('Update P: Diff loss ', Lossc-LossuP)
+    if (verbose){
+    message('Update P: Diff loss ', Lossc-LossuP)}
     ####
     
     # Update weights
@@ -68,7 +85,8 @@ CEC_PLS_SEM <-function(X, R, epsilon, phi,rho, constrained, MaxIter){
       W <- compute_W_new(X, R, P, B, alpha_c, rho, U, phi)
       LossuW <- loss_function(X,W,P,rho,U)/ssx
       ####
-      #message('Update W: Diff loss ', LossuP-LossuW)
+      if (verbose){
+        message('Update W: Diff loss ', LossuP-LossuW)}
       LossuP <- LossuW
       ####
     }
@@ -85,7 +103,8 @@ CEC_PLS_SEM <-function(X, R, epsilon, phi,rho, constrained, MaxIter){
       U <- compute_U(U, W, P, rho)
       ####
       LossuU <- loss_function(X,W,P,rho,U)/ssx
-      #message('Update U: Diff loss ', LossuW-LossuU)
+      if (verbose){
+      message('Update U: Diff loss ', LossuW-LossuU)}
       LossuP <- LossuU
       ####
     }
@@ -93,16 +112,18 @@ CEC_PLS_SEM <-function(X, R, epsilon, phi,rho, constrained, MaxIter){
     #primary & secondary relative residuals
     r1 <- sum((W-P)^2)/sum(W^2)
     r2 <- sum((W-Wold)^2)/(sum(U^2)+1e-9)
-    #message('Primary relative residual:  ', r1)
-    #message('Secondary relative residual:  ', r2)
-    
+    if (verbose){
+    message('Primary relative residual:  ', r1)
+    message('Secondary relative residual:  ', r2)
+    }
     # Calculate loss
     Lossu <- loss_function(X,W,P,rho,U)/ssx
-    Lossvec[iter + 1] <- Lossu
+    Lossvec <- c(Lossvec,Lossu)
     
     #Check for convergence or if maximum iterations are reached
     if (iter > MaxIter) {
       convAO <- 1
+      message("Maxiter")
     }
     
     # Relative Stopping Criterion
@@ -110,13 +131,14 @@ CEC_PLS_SEM <-function(X, R, epsilon, phi,rho, constrained, MaxIter){
     
     if (relative_change < epsilon) {
       convAO <- 1
-
+      message("convergence")
     }
     
+    if (verbose){
+    print(paste("Iteration completed:", iter))}
     iter <- iter + 1
     Lossc <- Lossu
   }
-  
   
   results <- list('weights' = W, 'loadings' = P, 'Lossvec' = Lossvec, 'Residual' = Lossu, 'Scores'= T_scores, 'n_iterations'= iter)
   return(results)
@@ -127,17 +149,17 @@ CEC_PLS_SEM <-function(X, R, epsilon, phi,rho, constrained, MaxIter){
 
 Initialize_parameters <- function(X, R, phi) {
   
-  J <- dim(X)[2] 
-  I <- dim(X)[1] 
+  J <- dim(X)[2] # number of columns
+  I <- dim(X)[1] # number of rows
   svd_X <- svd(X)
   W_svd <- svd_X$v[, 1:R]
-  alpha <- svd_X$d[1]^2 # max eigenvalue of X^TX
+  alpha <- svd_X$d[1]^2 # max eigenvalue of X^TX, more efficient
   
   # Random components: note sum of sq. W from svd =1
   W_rand <- matrix(rnorm(length(W_svd), mean = 0, sd = 1/sqrt(J)), nrow = nrow(W_svd))
   
   # Weighted combination: 0.7 * SVD + 0.3 * random
-  W0 <- 0.97*W_svd + 0.03*W_rand
+  W0 <- 0.7*W_svd + 0.3*W_rand
   Wind <- order(abs(W0))#absolute value needed!
   W0[Wind[1:(J*R-phi)]] <- 0
   
@@ -172,7 +194,7 @@ compute_P_new <- function(X, W, T_scores, U, rho, R) {
 
 compute_B <- function(X,W,P, alpha,XTX){
   # Compute: PX_kron^T*PX_kron*vec(W) by identity = vec(X^TXWP_TP)
-  term1 = XTX %*% (W %*% (t(P) %*% P))
+  term1 = (XTX %*% W %*% t(P) %*% P)
   
   # PX_kron^T *vec(X)
   term2 = (XTX %*% P)
