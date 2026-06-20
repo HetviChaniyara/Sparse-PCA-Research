@@ -24,12 +24,14 @@ registerDoParallel(c1)
 set.seed(2019)
 
 # sparse PCA data simulation #
-VAFx = c(.80,.95,1)           # Proportion of explained variance
+VAFx = c(.80,1)           # Proportion of explained variance
 p_sparse = c(0,.5,.8)      # Proportion of sparsity
-n_components = c(2,3)         # Number of components
+n_components = c(2)         # Number of components
 s_size = c(100,500)           # Sample size
 n_variables = c(10,100,1000)     # Number of variables
-n_replications = c(100)        # Number of repetitions
+n_replications = c(5)        # Number of repetitions
+
+
 
 design_matrix <- expand.grid( n_variables=n_variables,s_size=s_size,p_sparse=p_sparse,
                               n_components=n_components,VAFx =VAFx)
