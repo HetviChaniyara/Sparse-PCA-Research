@@ -155,7 +155,7 @@ Initialize_parameters <- function(X, R, phi) {
   #random part
   W_rand <- matrix(rnorm(J * R), ncol = R, nrow = J)
   #rational part
-  W_rat_unr <- svd1$v %*% diag(svd1$d[1:R]) / sqrt(I)
+  W_rat_unr <- svd_X$v %*% diag(svd_X$d[1:R]) / sqrt(I)
   if (R > 1) {  #rotation to simple structure
     varimax_res <- stats::varimax(W_rat_unr, normalize = FALSE)
     W_rat <- W_rat_unr %*% varimax_res$rotmat
