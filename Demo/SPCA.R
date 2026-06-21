@@ -39,7 +39,7 @@ for (f in folders) {
     
     # run with multistart
     best_res <- NULL; best_loss <- Inf
-    for (m in 1:2) {
+    for (m in 1:10) {
       set.seed(100 + m)
       # Change constrained to 0 or 1 here
       res <- CEC_PLS_SEM(X, R, 1e-8, phi, rho, constrained=0, MaxIter=100)
