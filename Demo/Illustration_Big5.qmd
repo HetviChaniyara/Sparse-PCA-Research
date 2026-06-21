@@ -1,0 +1,243 @@
+---
+title: "Illustration on Big5 data"
+format: html
+editor: visual
+---
+
+The purpose of the reported analyses here below is mainly to show the advantages of TSPCA over alternative approaches with equal weights and loadings based on sparse PCA methods with either sparse weights or sparse loadings. After all, a straightforward solution may seem to use the sparse loadings obtained from a sparse PCA analysis with sparseness on the loadings as the weights and the other way around. The advantages of TSPCA over such ad hoc approaches are as follows:
+
+-TSPCA will have a higher proportion of explained variance than methods using a sparse loading approach (and with the weights put equal to the loadings and both properly scaled for fair comparison to TSPCA). This is, TSPCA optimizes fit for a solution with weights equal to loadings.
+
+-TSPCA will have much more stable weights than methods using a sparse weights approach (and a higher proportion of explained variance when the loadings are set equal to the obtained weights and rescaling them properly).
+
+An illustrative real data example is used to underpin our statements. First, we focus on the proportion of explained variance and second, on the stability of the zero/nonzero status of the weights using resampling.
+
+# Data Preparation
+
+## Imports
+
+```{r}
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+rm(list = ls())
+```
+
+```{r}
+library("qraph") # Big5 data are part of qgraph package
+```
+
+## Big5 data
+
+The data represent the scores of 500 respondents of the 240 items of the neo-pi-r (Costa & McCrae, 1992). Here, we use the data collected by Dolan et al. (2009) on 500 first year psychology students and available as part of the qgraph package. The neo-pi-r is a questionnaire that has been developed to measure the 5 OCEAN personality traits, using 48 items per trait.
+
+```{r}
+# obtain data
+data("big5",package = "qgraph")
+# Mean centering + scaling to unit variance
+big5_std<-scale(big5,center = T,scale = T)
+
+# Reorder the variables to OCEAN structure
+itemlabels <- colnames(big5_std)
+Oind <- grep("O",itemlabels)
+Cind <- grep("C",itemlabels)
+Eind <- grep("E",itemlabels)
+Aind <- grep("A",itemlabels)
+Nind <- grep("N",itemlabels)
+
+OceanData <- big5_std[,c(Oind,Cind,Eind,Aind,Nind)]
+
+# Obtain basic information
+N <- dim(OceanData)[1]
+J <- dim(OceanData)[2]
+ssx <- sum(OceanData^2)
+
+# Fix number of factors to the 5 personality traits
+R <- 5 # 2 groups
+
+```
+
+# Regular PCA with W = P
+
+First we perform regular / svd based PCA that automatically yields W = P (both orthogonal)
+
+```{r}
+svdX <- svd(OceanData, nu = R, nv = R) 
+Loadings <- svdX$v 
+Scores <- OceanData %*% Loadings 
+PVEpca <- sum(svdX$d[1:R]^2)/ssx  
+round(Loadings, 3) 
+PVEpca
+```
+
+This solution has maximal PVE but does not show simple structure.
+
+# EFA/PCA with sparse loadings
+
+First, we conduct a sparse factor analysis with sparseness of the loadings. The seafar package (Le et al., 2026) is used that offers an implementation of the USLPCA method (Adachi & Trendafilov, 2016) that allows to impose the number of (non)zero loadings. Different from USLPCA, the factors can be correlated. The resulting factor scores are standardized.
+
+## Imports
+
+```{r}
+# install.packages("remotes") 
+# BiocManager::install("PCAtools") 
+# remotes::install_github("trale97/seafar@*release")
+```
+
+```{r}
+set.seed(1808)
+```
+
+```{r}
+library(seafar)  
+nrnonzero <- 240 #Following the design of the questionnaire 
+out_seafa <- seafar:::seafar_multistart(OceanData, nfactors = R, C = nrnonzero, INIT = "semirational") 
+Xhat <- out_seafa$scores%*%t(out_seafa$loadings) 
+PVEseafa <- 1-(sum((OceanData-Xhat)^2))/ssx 
+#Check of design: Do items designed for a trait load on same factor?
+L <- 1
+U <- L+47
+for (i in 1:5){
+  print(colSums(out_seafa$loadings[L:U,]!=0))
+  L <- U+1
+  U <- L+47
+} 
+PVEseafa
+```
+
+The obtained solution is sparse and has -upto rounding - same PVE as the PCA solution (which has the highest PVE by definition).
+
+As an alternative to CEC-PLS-SEM, one might consider using the obtained loadings as the weights when calculating the factor scores (with proper scaling so that the scores have variance equal to one as assumed in the seafar model). To legitimize the use of TSPCA, the proportion of variance explained by this solution should be lower.
+
+```{r}
+# Calculate factor scores with seafar loadings 
+T_seafa_unscaled <- OceanData %*% out_seafa$loadings 
+# Rescaling 
+T_norm <- colSums(T_seafa_unscaled^2)
+f_diag <- diag(sqrt(N)/ sqrt(T_norm))
+PW <- out_seafa$loadings%*%sqrt(f_diag)
+T_seafa_scaled <- T_seafa_unscaled %*% sqrt(f_diag)
+P_seafa_scaled <- out_seafa$loadings %*% sqrt(f_diag)
+X_hatW <- T_seafa_scaled %*% t(P_seafa_scaled)  
+X_hatW <- (OceanData%*%PW)%*%t(PW)
+# Compare Xhat based on heuristic with X 
+round(head(cbind(X_hatW[,1:3], X_hat[,1:3])),3)  
+#Proportion of variance explained 
+1-sum((OceanData-X_hatW)^2)/ssx 
+```
+
+# PCA with sparse weights
+
+PCA with sparse weights was developed by Zou et al. (2006) and was implemented in the elasticnet package.
+
+## Imports
+
+```{r}
+library(elasticnet)
+```
+
+## Set seed
+
+```{r}
+set.seed(510)
+```
+
+```{r}
+out_spca <- elasticnet::spca(OceanData, K=R, para = rep(48,5), sparse="varnum") 
+L <- 1
+U <- L+47
+for (i in 1:5){
+  print(colSums(out_spca$loadings[L:U,]!=0))
+  L <- U+1
+  U <- L+47
+} 
+out_spca$pev
+
+#recalculate pev, derive loadings
+alpha <- t(OceanData)%*%OceanData%*%out_spca$loadings
+z <- svd(alpha)
+P_spca <- (z$u) %*% t(z$v)
+Xhat_spca <- (OceanData%*%out_spca$loadings)%*%t(P_spca)
+1-(sum((OceanData-Xhat_spca)^2))/ssx
+
+#use spca weights as loadings
+Xhat_spca <- (OceanData%*%out_spca$loadings)%*%t(out_spca$loadings)
+1-(sum((OceanData-Xhat_spca)^2))/ssx
+
+```
+
+The PVE for spca is higher than for the approach with sparse loadings (as can be expected). Yet, stability of the weights is an issue.
+
+# W = P analysis
+
+```{r}
+source("../Scripts/SPCA_Functions.R")
+epsilon <- 1e-8 
+phi <- nrnonzero #number of nonzero loadings 
+###set penalty to balance fit with penalty 
+rho <- sum(OceanData^2)/R #||X-XWP'||^2 is max ||X||^2 while ||W-P||^2 is max R  
+# 1. Penalized approach; loadings not exact equal to weights
+out_pwsparse <- NULL; best_loss <- Inf
+for (m in 1:20) {
+  set.seed(100 + m)
+  # Change constrained to 0 or 1 here
+  res <- CEC_PLS_SEM(OceanData, PW, R, 1e-8, phi=nrnonzero, rho, constrained=1, MaxIter=200)
+  if (res$Residual < best_loss) 
+  { best_loss <- res$Residual; out_pwsparse <- res }
+}
+
+PVEpwsparse <- 1-out_pwsparse$Residual 
+#round(cbind(X,xhat),4)
+round(cbind(out_pwsparse$weights[,1:2],out_pwsparse$loadings[,1:2]),3)
+PVEpwsparse
+Xhat_tspca <- (OceanData%*%out_pwsparse$weights)%*%t(out_pwsparse$loadings)
+1-(sum((OceanData-Xhat_tspca)^2))/ssx
+```
+
+#Instability of weights, not of loadings
+
+Use Hetvi's idea to create slightly perturbed data matrices.
+
+```{r}
+nsize <- 200 #resampling 
+nrreplic <- 10
+seafarLoadings <- c() 
+spcaweights <- c() 
+wpweights <- c() 
+spcazero <- matrix(0, nrow = J, ncol = R)
+wpZERO <- matrix(0, nrow = J, ncol = R)
+
+for (replic in 1:nrreplic){   # Noise   
+  index <- sample(500,nsize)
+  SampleData <- OceanData[index,]   
+  ssx <- sum(SampleData^2)
+  #spca: instable loadings when repeated   
+  out_spca <- elasticnet::spca(SampleData, K=R, para = rep(48,R),
+                               sparse="varnum")
+  spcaweights <- cbind(spcaweights, out_spca$loadings)
+  spcazero <- spcazero+(out_spca$loadings==0)
+  out_spca$pev      #uslpca/seafar   
+  out_seafa <- seafar:::seafar_multistart(SampleData, nfactors = R, C = nrnonzero, INIT ="semirational")  
+  Xhat <- out_seafa$scores%*%t(out_seafa$loadings)  
+  PVEseafa <- 1-(sum((SampleData-Xhat)^2))/ssx   #out_seafa$PVE 
+  seafarLoadings <- cbind(seafarLoadings, out_seafa$loadings)      #w=p   
+  out_pwsparse <- CEC_PLS_SEM(SampleData, PW, R, epsilon, phi,
+                              rho, constrained = 1, MaxIter=200) 
+  wpweights <- cbind(wpweights, out_pwsparse$weights) 
+  wpZERO <- wpZERO+(out_pwsparse$weights==0)
+}
+
+```
+
+Here below we calculate in how many of the resamples zero weights were zero and nonzero weights nonzero. The results indicated that TSPCA yields very stable results (approximately 240 loadings are zero in each resample and 960 are nonzero in each resample) while spca is very unstable (very few loadings are consistently zero or nonzero over the resamples).
+
+```{r}
+###HOW TO SHOW INSTABILITY??? (Different scales)
+#same scale -> spca loadings have norm 1??
+rbind(apply(spcaweights,1,var),apply(wpweights,1,var))
+###COMPARE ON ZERO/NONZERO STATUS
+sum(wpZERO==0)
+sum(wpZERO==nrreplic)
+
+sum(spcazero==0)
+sum(spcazero==nrreplic)
+
+```
