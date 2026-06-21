@@ -153,13 +153,14 @@ Initialize_parameters <- function(X, R, phi) {
   I <- dim(X)[1] # number of rows
   svd_X <- svd(X,R,R)
   #random part
-  W_rand <- matrix(rnorm(J * R), ncol = R, nrow = J)
+  W_rand <- matrix(rnorm(J * R, sd=1/sqrt(J)), ncol = R, nrow = J)
   #rational part
-  W_rat_unr <- svd_X$v %*% diag(svd_X$d[1:R]) / sqrt(I)
+  W_rat_unr <- svd_X$v # %*% diag(svd_X$d[1:R]) / sqrt(I)
   if (R > 1) {  #rotation to simple structure
     varimax_res <- stats::varimax(W_rat_unr, normalize = FALSE)
     W_rat <- W_rat_unr %*% varimax_res$rotmat
   }
+  #W_rat <- W_rat_unr
   #W_svd <- svd_X$v[, 1:R]
   alpha <- svd_X$d[1]^2 # max eigenvalue of X^TX, more efficient
   
