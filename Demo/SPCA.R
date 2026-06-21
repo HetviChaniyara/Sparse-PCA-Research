@@ -51,7 +51,11 @@ for (f in folders) {
     W_aligned <- align_components(best_res$weights, out$W)
     #change p to w2
     P_aligned <- align_components(best_res$loadings, out$P)
-    selection <- evaluate_variable_selection(out$W, W_aligned)
+    if (prefix==1){
+      selection <- evaluate_variable_selection(out$W, W_aligned)
+    } else {
+      selection <- evaluate_variable_selection(out$P, W_aligned) 
+    }
     bvm_W <- compute_bias_variance_mse(out$W, W_aligned)
     #change p to w2
     bvm_P <- compute_bias_variance_mse(out$P, P_aligned) 
