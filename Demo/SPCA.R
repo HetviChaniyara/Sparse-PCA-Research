@@ -18,7 +18,7 @@ for (f in folders) {
   # load the design parameters for the data
   
   load(file.path(f, "Info_simulaiton.RData"))
-  design <- Info_simulation$design_matrix_replication
+  design <- Infor_simulation$design_matrix_replication
   prefix <- ifelse(grepl("WP-Sparse", f), "WPsparse", "Psparse")
   
   # for progress updates
@@ -42,7 +42,7 @@ for (f in folders) {
     for (m in 1:10) {
       set.seed(100 + m)
       # Change constrained to 0 or 1 here
-      res <- CEC_PLS_SEM(X, R, 1e-8, phi, rho, constrained=0, MaxIter=100)
+      res <- CEC_PLS_SEM(X, INIT=NULL, R, 1e-8, phi, rho, constrained=0, MaxIter=100)
       if (res$Residual < best_loss) { best_loss <- res$Residual; best_res <- res }
     }
     
