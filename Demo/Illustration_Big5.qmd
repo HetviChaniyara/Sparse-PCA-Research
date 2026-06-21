@@ -22,7 +22,7 @@ rm(list = ls())
 ```
 
 ```{r}
-library("qraph") # Big5 data are part of qgraph package
+library("qgraph") # Big5 data are part of qgraph package
 ```
 
 ## Big5 data
