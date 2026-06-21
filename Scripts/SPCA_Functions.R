@@ -151,15 +151,23 @@ Initialize_parameters <- function(X, R, phi) {
   
   J <- dim(X)[2] # number of columns
   I <- dim(X)[1] # number of rows
-  svd_X <- svd(X)
-  W_svd <- svd_X$v[, 1:R]
+  svd_X <- svd(X,R,R)
+  #random part
+  W_rand <- matrix(rnorm(J * R), ncol = R, nrow = J)
+  #rational part
+  W_rat_unr <- svd1$v %*% diag(svd1$d[1:R]) / sqrt(I)
+  if (R > 1) {  #rotation to simple structure
+    varimax_res <- stats::varimax(W_rat_unr, normalize = FALSE)
+    W_rat <- W_rat_unr %*% varimax_res$rotmat
+  }
+  #W_svd <- svd_X$v[, 1:R]
   alpha <- svd_X$d[1]^2 # max eigenvalue of X^TX, more efficient
   
   # Random components: note sum of sq. W from svd =1
-  W_rand <- matrix(rnorm(length(W_svd), mean = 0, sd = 1/sqrt(J)), nrow = nrow(W_svd))
+  #W_rand <- matrix(rnorm(length(W_svd), mean = 0, sd = 1/sqrt(J)), nrow = nrow(W_svd))
   
   # Weighted combination: 0.7 * SVD + 0.3 * random
-  W0 <- 0.7*W_svd + 0.3*W_rand
+  W0 <- 0.8*W_rat + 0.2*W_rand
   Wind <- order(abs(W0))#absolute value needed!
   W0[Wind[1:(J*R-phi)]] <- 0
   
