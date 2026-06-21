@@ -55,8 +55,8 @@ results_sim1_data1 <- foreach(i=1:nrow(design_matrix_replication),
                                 vafx = design_matrix_replication$VAFx[i]
                                 propsparse = design_matrix_replication$p_sparse[i]
                                 
-                                n_zeros = floor(J*propsparse)
-                                n_non_zero = J-n_zeros
+                                n_zeros = floor(J*R*propsparse)
+                                n_non_zero = J*R-n_zeros
                                 
                                 # Generating data
                                 X = mvrnorm(n =I,mu=rep(0,J),Sigma = diag(1,J))
