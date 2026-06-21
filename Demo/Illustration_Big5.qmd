@@ -118,8 +118,8 @@ T_seafa_scaled <- T_seafa_unscaled %*% sqrt(f_diag)
 P_seafa_scaled <- out_seafa$loadings %*% sqrt(f_diag)
 X_hatW <- T_seafa_scaled %*% t(P_seafa_scaled)  
 X_hatW <- (OceanData%*%PW)%*%t(PW)
-# Compare Xhat based on heuristic with X 
-round(head(cbind(X_hatW[,1:3], X_hat[,1:3])),3)  
+# Compare Xhat based on heuristic with Xhat seafar 
+round(head(cbind(X_hatW[,1:3], Xhat[,1:3])),3)  
 #Proportion of variance explained 
 1-sum((OceanData-X_hatW)^2)/ssx 
 ```
@@ -176,10 +176,11 @@ phi <- nrnonzero #number of nonzero loadings
 rho <- sum(OceanData^2)/R #||X-XWP'||^2 is max ||X||^2 while ||W-P||^2 is max R  
 # 1. Penalized approach; loadings not exact equal to weights
 out_pwsparse <- NULL; best_loss <- Inf
+INIT <- PW
 for (m in 1:20) {
   set.seed(100 + m)
   # Change constrained to 0 or 1 here
-  res <- CEC_PLS_SEM(OceanData, PW, R, 1e-8, phi=nrnonzero, rho, constrained=1, MaxIter=200)
+  res <- CEC_PLS_SEM(OceanData, INIT, R, 1e-8, phi=nrnonzero, rho, constrained=1, MaxIter=200)
   if (res$Residual < best_loss) 
   { best_loss <- res$Residual; out_pwsparse <- res }
 }
