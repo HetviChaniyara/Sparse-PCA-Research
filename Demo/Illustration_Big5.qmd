@@ -77,9 +77,38 @@ First, we conduct a sparse factor analysis with sparseness of the loadings. The 
 ## Imports
 
 ```{r}
-# install.packages("remotes") 
-# BiocManager::install("PCAtools") 
-# remotes::install_github("trale97/seafar@*release")
+if (!requireNamespace("remotes", quietly = TRUE)) install.packages("remotes")
+# PCAtools is a Bioconductor-only dependency of seafar; it must be installed
+# via BiocManager *before* seafar, otherwise remotes tries (and fails) to
+# pull it from CRAN as part of installing seafar's dependencies.
+if (!requireNamespace("PCAtools", quietly = TRUE)) {
+  if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")
+  BiocManager::install("PCAtools")
+}
+# EFA.dimensions (another seafar dependency) was archived on CRAN because its
+# own dependency EFAtools was briefly archived; EFAtools is back on CRAN but
+# EFA.dimensions has not been resubmitted, so it must be pulled from the CRAN
+# Archive by explicit version instead of a plain install.packages() call.
+if (!requireNamespace("EFA.dimensions", quietly = TRUE)) {
+  # EFA.dimensions' CRAN dependencies have compiled code and must come as
+  # ordinary prebuilt Windows binaries -- this machine has no Rtools/make
+  # toolchain, so a source build of any of them fails. install.packages()
+  # defaults to binary on Windows, so install these first; that way
+  # install_version() below finds them already satisfied and only has to
+  # build EFA.dimensions itself from source, which has no compiled code.
+  # (remotes::install_version() only accepts type = "source" for the
+  # archived package itself, so it can't be told to fetch binaries directly.)
+  efa_deps <- c("psych", "polycor", "EFAtools", "mirt", "GPArotation", "lavaan", "semTools")
+  missing_deps <- efa_deps[!sapply(efa_deps, requireNamespace, quietly = TRUE)]
+  if (length(missing_deps) > 0) install.packages(missing_deps)
+  # upgrade = "never": avoids an interactive "update these packages?" prompt
+  # that would hang a non-interactive knit.
+  remotes::install_version("EFA.dimensions", version = "0.1.8.8",
+                            repos = "https://cran.r-project.org", upgrade = "never")
+}
+if (!requireNamespace("seafar", quietly = TRUE)) {
+  remotes::install_github("trale97/seafar@*release")
+}
 ```
 
 ```{r}
@@ -170,27 +199,42 @@ The PVE for spca is higher than for the approach with sparse loadings (as can be
 
 ```{r}
 source("../Scripts/SPCA_Functions.R")
-epsilon <- 1e-8 
-phi <- nrnonzero #number of nonzero loadings 
-###set penalty to balance fit with penalty 
-rho <- sum(OceanData^2)/R #||X-XWP'||^2 is max ||X||^2 while ||W-P||^2 is max R  
-# 1. Penalized approach; loadings not exact equal to weights
+epsilon <- 1e-8
+phi <- nrnonzero #number of nonzero loadings, per component: 48 items per trait
+###set penalty to balance fit with penalty
+rho <- sum(OceanData^2)/R #||X-XWP'||^2 is max ||X||^2 while ||W-P||^2 is max R
+# Equality-constrained approach (TSPCA): loadings forced exactly equal to weights.
+# cardinality_type = "per_component" guarantees exactly `phi` (48) nonzero weights
+# in EACH of the 5 components -- the global/matrix-wide budget used elsewhere in
+# this codebase gives no such guarantee and could in principle starve a trait of
+# nonzero weights entirely (which would abort with "zero column in W").
 out_pwsparse <- NULL; best_loss <- Inf
 INIT <- PW
 for (m in 1:20) {
   set.seed(100 + m)
-  # Change constrained to 0 or 1 here
-  res <- CEC_PLS_SEM(OceanData, INIT, R, 1e-8, phi=nrnonzero, rho, constrained=1, MaxIter=200)
-  if (res$Residual < best_loss) 
+  res <- CEC_PLS_SEM(OceanData, INIT, R, 1e-8, phi=nrnonzero, rho, constrained=1, MaxIter=200,
+                      cardinality_type = "per_component")
+  if (res$Residual < best_loss)
   { best_loss <- res$Residual; out_pwsparse <- res }
 }
 
-PVEpwsparse <- 1-out_pwsparse$Residual 
+PVEpwsparse <- 1-out_pwsparse$Residual
 #round(cbind(X,xhat),4)
 round(cbind(out_pwsparse$weights[,1:2],out_pwsparse$loadings[,1:2]),3)
 PVEpwsparse
 Xhat_tspca <- (OceanData%*%out_pwsparse$weights)%*%t(out_pwsparse$loadings)
 1-(sum((OceanData-Xhat_tspca)^2))/ssx
+
+#Check of design, as done above for seafar and spca: do items designed for a
+#trait load on the TSPCA component for that same trait? Since weights = loadings
+#here, checking one checks both.
+L <- 1
+U <- L+47
+for (i in 1:5){
+  print(colSums(out_pwsparse$weights[L:U,]!=0))
+  L <- U+1
+  U <- L+47
+}
 ```
 
 #Instability of weights, not of loadings
@@ -221,7 +265,8 @@ for (replic in 1:nrreplic){   # Noise
   PVEseafa <- 1-(sum((SampleData-Xhat)^2))/ssx   #out_seafa$PVE 
   seafarLoadings <- cbind(seafarLoadings, out_seafa$loadings)      #w=p   
   out_pwsparse <- CEC_PLS_SEM(SampleData, PW, R, epsilon, phi,
-                              rho, constrained = 1, MaxIter=200) 
+                              rho, constrained = 1, MaxIter=200,
+                              cardinality_type = "per_component")
   wpweights <- cbind(wpweights, out_pwsparse$weights) 
   wpZERO <- wpZERO+(out_pwsparse$weights==0)
 }
@@ -231,14 +276,34 @@ for (replic in 1:nrreplic){   # Noise
 Here below we calculate in how many of the resamples zero weights were zero and nonzero weights nonzero. The results indicated that TSPCA yields very stable results (approximately 240 loadings are zero in each resample and 960 are nonzero in each resample) while spca is very unstable (very few loadings are consistently zero or nonzero over the resamples).
 
 ```{r}
-###HOW TO SHOW INSTABILITY??? (Different scales)
-#same scale -> spca loadings have norm 1??
-rbind(apply(spcaweights,1,var),apply(wpweights,1,var))
-###COMPARE ON ZERO/NONZERO STATUS
+# The raw per-item variance across resamples used to be computed by pooling all
+# R components' columns together (apply(spcaweights, 1, var) over J x (R*nrreplic)
+# columns at once). That conflates two different sources of spread -- genuine
+# resample-to-resample instability, and the fact that the same item can have very
+# different typical magnitudes on different components -- and is exactly the
+# "different scales" problem flagged above. Splitting by component first, and
+# comparing the scale-free zero/nonzero agreement rate (which was already being
+# computed below), is the cleaner way to make the same point.
+
+# Per-component variance across resamples (not pooled across components)
+spca_var_by_comp <- sapply(1:R, function(r) apply(spcaweights[, seq(r, R*nrreplic, by = R)], 1, var))
+wp_var_by_comp   <- sapply(1:R, function(r) apply(wpweights[,   seq(r, R*nrreplic, by = R)], 1, var))
+colnames(spca_var_by_comp) <- colnames(wp_var_by_comp) <- paste0("Comp", 1:R)
+cat("Mean per-item weight variance across resamples, by component:\n")
+cat("spca: "); print(round(colMeans(spca_var_by_comp), 4))
+cat("TSPCA: "); print(round(colMeans(wp_var_by_comp), 4))
+
+###COMPARE ON ZERO/NONZERO STATUS (scale-free: does each entry keep the same
+### zero/nonzero status across all nrreplic resamples?)
 sum(wpZERO==0)
 sum(wpZERO==nrreplic)
 
 sum(spcazero==0)
 sum(spcazero==nrreplic)
 
+# Same information as a single stability rate per method, easier to report directly:
+cat(sprintf("TSPCA: %.1f%% of weights had unanimous zero/nonzero status across resamples\n",
+            100 * (sum(wpZERO==0) + sum(wpZERO==nrreplic)) / length(wpZERO)))
+cat(sprintf("spca:  %.1f%% of loadings had unanimous zero/nonzero status across resamples\n",
+            100 * (sum(spcazero==0) + sum(spcazero==nrreplic)) / length(spcazero)))
 ```
