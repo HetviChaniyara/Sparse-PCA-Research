@@ -3,11 +3,15 @@
 #
 # Implements the block-l0 variant of gPower (Journee, Nesterov, Richtarik &
 # Sepulchre, 2010, "Generalized Power Method for Sparse Principal Component
-# Analysis", JMLR 11, 517-553, Section 3.2).
+# Analysis", JMLR 11, 517-553, Section 3.2), plus a direct-cardinality
+# variant (gpower_block_cardinality()) so it can be dropped into the same
+# benchmark loops as elasticnet::spca(..., para = phi) and
+# CEC_PLS_SEM(..., phi = phi) elsewhere in this project (see
+# SPCA_Functions.R, Demo/Elastic_net.R, Demo/SPCA.R).
 #
-# Problem solved (A = data, I x J, optionally centered/scaled; U's columns
-# orthonormal, I x R "generalized score directions"; Z's columns unit-norm
-# sparse loadings, J x R):
+# Problem solved by gpower_block_l0() (A = data, I x J, optionally
+# centered/scaled; U's columns orthonormal, I x R "generalized score
+# directions"; Z's columns unit-norm sparse loadings, J x R):
 #
 #   max_{U'U = I_R, ||z_j||=1}  sum_j  mu_j^2 (u_j' A z_j)^2 - gamma_j ||z_j||_0
 #
@@ -15,12 +19,28 @@
 # thresholding of the correlations A'u_j. For fixed Z, U is updated via the
 # polar decomposition (SVD) of A Z diag(mu). Alternating the two increases
 # the objective monotonically (Journee et al. 2010, Prop. 8), which is used
-# below as a correctness check (see test_gpower_block_l0.R).
+# as a correctness check in test_gpower_block_l0.R.
 #
-# Returns $weights/$loadings/$scores in the same shape as CEC_PLS_SEM() and
-# elasticnet::spca() in this project (see SPCA_Functions.R, Elastic_net.R),
-# so it drops into the existing benchmark loops (align_components(),
-# evaluate_variable_selection(), compute_vaf()) unchanged.
+# gpower_block_l0() returns $weights/$loadings/$scores in the same shape as
+# CEC_PLS_SEM() and elasticnet::spca(), so it drops into the existing
+# benchmark loops (align_components(), evaluate_variable_selection(),
+# compute_vaf()) unchanged.
+
+#' Per-component gamma reference values for gpower_block_l0()
+#'
+#' Returns the squared singular values of X (after the same centering/scaling
+#' gpower_block_l0() would apply), one per component. Multiply by a relative
+#' sparsity rho_j in (0, 1) to get an absolute gamma_j that accounts for
+#' later components naturally having smaller achievable correlations than
+#' the first -- see Details in \code{\link{gpower_block_l0}}.
+#'
+#' @inheritParams gpower_block_l0
+#' @return numeric vector of length R.
+#' @export
+gpower_gamma_reference <- function(X, R, center = TRUE, scale = FALSE) {
+  A <- scale(as.matrix(X), center = center, scale = scale)
+  svd(A, nu = 0, nv = 0)$d[seq_len(R)]^2
+}
 
 #' Block Generalized Power Method for Sparse PCA (l0 penalty)
 #'
@@ -75,22 +95,6 @@
 #' @references Journee, M., Nesterov, Y., Richtarik, P. and Sepulchre, R.
 #'   (2010). Generalized Power Method for Sparse Principal Component
 #'   Analysis. Journal of Machine Learning Research, 11, 517-553.
-#' Per-component gamma reference values for gpower_block_l0()
-#'
-#' Returns the squared singular values of X (after the same centering/scaling
-#' gpower_block_l0() would apply), one per component. Multiply by a relative
-#' sparsity rho_j in (0, 1) to get an absolute gamma_j that accounts for
-#' later components naturally having smaller achievable correlations than
-#' the first -- see Details in \code{\link{gpower_block_l0}}.
-#'
-#' @inheritParams gpower_block_l0
-#' @return numeric vector of length R.
-#' @export
-gpower_gamma_reference <- function(X, R, center = TRUE, scale = FALSE) {
-  A <- scale(as.matrix(X), center = center, scale = scale)
-  svd(A, nu = 0, nv = 0)$d[seq_len(R)]^2
-}
-
 #' @export
 gpower_block_l0 <- function(X, R, gamma, mu = 1, center = TRUE, scale = FALSE,
                              max_iter = 1000, tol = 1e-4, verbose = FALSE) {
@@ -140,8 +144,12 @@ gpower_block_l0 <- function(X, R, gamma, mu = 1, center = TRUE, scale = FALSE,
     grad <- matrix(0, I, R)
     for (j in seq_len(R)) {
       pattern_j <- thresholded[, j] > 0
-      z_j <- Y[pattern_j, j] / sqrt(sum(Y[pattern_j, j]^2))
-      grad[, j] <- mu[j] * (A[, pattern_j, drop = FALSE] %*% z_j)
+      if (!any(pattern_j)) {
+        grad[, j] <- U[, j]  # this component's support is empty; leave it in place
+      } else {
+        z_j <- Y[pattern_j, j] / sqrt(sum(Y[pattern_j, j]^2))
+        grad[, j] <- mu[j] * (A[, pattern_j, drop = FALSE] %*% z_j)
+      }
     }
     svd_grad <- svd(grad)
     U <- svd_grad$u %*% t(svd_grad$v)
@@ -194,5 +202,184 @@ gpower_block_l0 <- function(X, R, gamma, mu = 1, center = TRUE, scale = FALSE,
     sparsity = colMeans(Z == 0),
     iterations = iter,
     objective = obj_trace[seq_len(iter)]
+  )
+}
+
+#' Block Generalized Power Method for Sparse PCA (direct cardinality control)
+#'
+#' Same power-iteration structure as \code{\link{gpower_block_l0}} (U is
+#' updated via the polar decomposition of A %*% Z %*% diag(mu)), but Z's
+#' support is chosen by DIRECTLY selecting the largest-magnitude mu-weighted
+#' correlations up to an exact nonzero budget phi, instead of a continuous
+#' gamma threshold -- mirroring \code{apply_cardinality()} in
+#' SPCA_Functions.R, right down to the same vocabulary: "per_component"
+#' ranks each column separately and keeps exactly phi_j per column;
+#' "total" ranks all J*R entries of the weight matrix together and keeps
+#' only the phi largest overall, letting components compete freely for the
+#' shared budget instead of each getting a fixed share.
+#'
+#' Because top-k selection is a closed-form maximizer of the fixed-U
+#' subproblem (see Details), this hits the requested cardinality EXACTLY
+#' every time -- no gamma calibration, no bisection search needed. Prefer
+#' this function whenever what you actually want is an exact nonzero count
+#' (which is what every other benchmark in this project specifies); reach
+#' for the gamma-based \code{\link{gpower_block_l0}} instead when you want
+#' continuous regularization-path behavior (e.g. a smooth sequence of fits
+#' as gamma varies) rather than a fixed target count.
+#'
+#' @param X,mu,center,scale,max_iter,tol,verbose see \code{\link{gpower_block_l0}}.
+#' @param R number of components.
+#' @param phi target cardinality. For \code{cardinality_type = "per_component"}:
+#'   a single value (recycled to every component) or a length-R vector, each
+#'   in [1, ncol(X)] -- component j always ends up with exactly phi_j
+#'   nonzero loadings. For \code{cardinality_type = "total"}: a single
+#'   scalar in [R, R * ncol(X)] -- exactly phi nonzero loadings across the
+#'   WHOLE J x R weight matrix in total, allocated freely across components
+#'   by whichever correlations are largest.
+#' @param cardinality_type "per_component" (default) or "total". As already
+#'   noted for \code{apply_cardinality()}'s "total" mode in
+#'   SPCA_Functions.R, ranking the whole matrix together CAN starve a
+#'   component down to zero nonzero entries if its correlations are
+#'   uniformly weaker than the others' -- this function stops with an
+#'   informative error in that case rather than silently returning a
+#'   degenerate component; try "per_component", a larger phi, or mu weights
+#'   that favor the starved component.
+#'
+#' @details
+#' For fixed U, maximizing sum_j mu_j^2 (u_j'Az_j)^2 over unit-norm z_j
+#' subject to a cardinality budget has a closed-form solution: for any
+#' fixed support S, the optimal z_j (restricted to S) is proportional to
+#' the correlations Y_ij = (A'u_j)_i on S, so keeping entry (i,j) is worth
+#' exactly (mu_j Y_ij)^2 to the objective, independent of which other
+#' entries are kept. Under a per-column budget phi_j, that means: keep
+#' column j's phi_j largest |mu_j Y_ij| values. Under a single TOTAL budget
+#' phi shared across columns, entries are still mutually independent in
+#' value, so the globally optimal allocation is exactly the phi largest
+#' |mu_j Y_ij| values anywhere in the J x R matrix -- a separable-knapsack
+#' argument (item (i,j)'s value never depends on what else is chosen, so
+#' greedy-by-value is optimal), the same rule
+#' \code{apply_cardinality(..., "total")} already applies to a weight
+#' update in SPCA_Functions.R, here applied to the correlations instead.
+#'
+#' @return same shape as \code{\link{gpower_block_l0}}, plus \code{$phi} and
+#'   \code{$cardinality_type} echoing what was requested.
+#' @export
+gpower_block_cardinality <- function(X, R, phi, mu = 1,
+                                      cardinality_type = c("per_component", "total"),
+                                      center = TRUE, scale = FALSE,
+                                      max_iter = 1000, tol = 1e-4, verbose = FALSE) {
+
+  cardinality_type <- match.arg(cardinality_type)
+  A <- scale(as.matrix(X), center = center, scale = scale)
+  I <- nrow(A)
+  J <- ncol(A)
+
+  if (R < 1 || R > min(I, J)) stop("R must be between 1 and min(nrow(X), ncol(X)).")
+  if (length(mu) == 1) mu <- rep(mu, R)
+  if (length(mu) != R) stop("mu must have length 1 or R.")
+  if (any(mu <= 0)) stop("mu must be strictly positive.")
+
+  if (cardinality_type == "per_component") {
+    if (length(phi) == 1) phi <- rep(phi, R)
+    if (length(phi) != R) stop("phi must have length 1 or R when cardinality_type = 'per_component'.")
+    if (any(phi < 1 | phi > J)) stop("phi must be between 1 and ncol(X).")
+  } else {
+    if (length(phi) != 1) stop("phi must be a single number when cardinality_type = 'total'.")
+    if (phi < R || phi > J * R) stop("phi must be between R and R * ncol(X) when cardinality_type = 'total'.")
+  }
+
+  # Deterministic warm start, as in gpower_block_l0() -- see the comment
+  # there for why this matters beyond mere reproducibility.
+  U <- svd(A, nu = R, nv = 0)$u
+
+  select_pattern <- function(Ymu2) {
+    pattern <- matrix(FALSE, J, R)
+    if (cardinality_type == "per_component") {
+      for (j in seq_len(R)) {
+        keep <- order(Ymu2[, j], decreasing = TRUE)[seq_len(phi[j])]
+        pattern[keep, j] <- TRUE
+      }
+    } else {
+      keep <- order(Ymu2, decreasing = TRUE)[seq_len(phi)]
+      pattern[keep] <- TRUE
+    }
+    pattern
+  }
+
+  check_no_empty_component <- function(pattern) {
+    empty <- colSums(pattern) == 0
+    if (any(empty)) {
+      stop("Component(s) ", paste(which(empty), collapse = ", "),
+           " received zero nonzero entries under this ",
+           if (cardinality_type == "total") "total budget (phi = " else "phi (",
+           paste(phi, collapse = ", "), "). ",
+           if (cardinality_type == "total")
+             "Try cardinality_type = 'per_component', a larger phi, or mu weights that favor the starved component(s)."
+           else "Increase phi for the affected component(s).")
+    }
+  }
+
+  obj_trace <- numeric(max_iter)
+  iter <- 0
+  converged <- FALSE
+
+  repeat {
+    iter <- iter + 1
+
+    Y <- t(A) %*% U
+    Ymu <- sweep(Y, 2, mu, `*`)
+    Ymu2 <- Ymu^2
+    pattern <- select_pattern(Ymu2)
+    check_no_empty_component(pattern)
+    obj_trace[iter] <- sum(Ymu2[pattern])
+
+    grad <- matrix(0, I, R)
+    for (j in seq_len(R)) {
+      pattern_j <- pattern[, j]
+      z_j <- Y[pattern_j, j] / sqrt(sum(Y[pattern_j, j]^2))
+      grad[, j] <- mu[j] * (A[, pattern_j, drop = FALSE] %*% z_j)
+    }
+    svd_grad <- svd(grad)
+    U <- svd_grad$u %*% t(svd_grad$v)
+
+    if (verbose) message("iter ", iter, ": objective = ", obj_trace[iter])
+
+    if (iter > 1) {
+      rel_change <- abs(obj_trace[iter] - obj_trace[iter - 1]) / abs(obj_trace[iter - 1])
+      if (rel_change < tol) { converged <- TRUE; break }
+    }
+    if (iter >= max_iter) break
+  }
+  if (!converged) warning("gpower_block_cardinality reached max_iter (", max_iter, ") without converging.")
+
+  # Final extraction using the same selection rule as every iteration.
+  Y <- t(A) %*% U
+  Ymu2 <- sweep(Y, 2, mu, `*`)^2
+  pattern <- select_pattern(Ymu2)
+  check_no_empty_component(pattern)
+
+  Z <- Y
+  Z[!pattern] <- 0
+  Z <- sweep(Z, 2, sqrt(colSums(Z^2)), `/`)
+
+  scores <- A %*% Z
+
+  cross <- t(A) %*% A %*% Z
+  svd_cross <- svd(cross)
+  P <- svd_cross$u %*% t(svd_cross$v)
+
+  X_hat <- A %*% Z %*% t(P)
+  exp_var <- 1 - sum((A - X_hat)^2) / sum(A^2)
+
+  list(
+    weights = Z,
+    loadings = P,
+    scores = scores,
+    exp_var = exp_var,
+    sparsity = colMeans(Z == 0),
+    iterations = iter,
+    objective = obj_trace[seq_len(iter)],
+    phi = phi,
+    cardinality_type = cardinality_type
   )
 }
