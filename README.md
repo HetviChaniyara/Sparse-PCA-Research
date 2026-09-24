@@ -1,40 +1,50 @@
-# CEC-PLS-SEM
+# TSPCA
 
 ## Description
 
-This repository includes the implementation of Cardinality and Equality Constrained Partial Least Squares Structural Equation Modelling (CEC-PLS-SEM), a new approach aiming to tackle the issue of weight instability of PLS-SEM under high-dimensional low sample size (HDLSS) settings. The simulation study compares the performance of the new approach to Sparse Generalised Canonical Correlation Analysis (SGCCA). The repository contains the functions developed in R to implement the method and the code for the simulation study.
+This repository includes the implementation of Tied Sparse PCA (TSPCA), a sparse PCA method in which the component weights are tied to the loadings (W = P) and a cardinality constraint fixes the number of nonzero weights. The method is implemented in two variants: a constrained approach, which imposes W = P exactly, and a penalized approach, which adds a penalty on the difference between W and P.
+
+A simulation study compares TSPCA with sparse PCA methods that impose sparseness on either the weights (Zou et al.'s SPCA from the elasticnet package; GPower by Journée et al.) or the loadings (seafar). An illustration on the Big5 data shows TSPCA's advantages in explained variance and in stability of the zero/nonzero status of the weights. The repository contains the R functions that implement the method and the code for the simulation study and the illustration.
 
 ## Repository Structure
 
 The repository is organised into two main folders:
 
--   Scripts/: Contains the R scripts for data generation and the functions required to run both methods.
+-   Scripts/: Contains the R scripts for data generation and the functions required to run the methods.
 
-    -   Psparse_Data.R : Script to obtain data with sparse factor loadings.
+    -   Psparse_Data.R : Script to obtain data with sparse loadings.
 
     -   Wsparse_Data.R : Script to obtain data with sparse weights.
 
-    -   CEC_PLS_SEM_Functions.R : Functions for the CEC-PLS-SEM method.
+    -   WPsparse_Data.R : Script to obtain data with sparse weights and loadings, including the symmetric condition W = P.
 
-    -   SGCCA_Function.R : Functions for the SGCCA method
+    -   TSPCA_Functions.R : Functions for the TSPCA method and for evaluating the results.
 
--   Demo/ : Provides the scripts to run the method for the datasets and summarises the results for the methods.
+    -   GPower_Functions.R : Functions for the GPower method with a cardinality constraint.
 
-    -   CEC_PLS_SEM.R : Script to run CEC-PLS-SEM and summarises results by averaging across 5 iterations per condition. Change the path to the data folder to obtain results under both data generation schemes.
+-   Demo/ : Provides the scripts to run the methods on the simulated datasets and summarise the results.
 
-    -   SGCCA.R : Script to run SGCCA and summarise results by averaging across 5 iterations per condition.
+    -   TSPCA_Sim.R : Runs TSPCA on all data-generation schemes and summarises the results per design cell, including the stability of the variable selection across replications.
+
+    -   SPCA_Sim.R : The same for Zou et al.'s SPCA (elasticnet).
+
+    -   GPower_Sim.R : The same for GPower.
+
+    -   Seafar_Sim.R : The same for seafar.
+
+    -   Illustration_Big5.qmd : Illustration on the Big5 data, comparing explained variance and resampling stability of TSPCA, SPCA, GPower and seafar.
 
 ## How to Run This Project
 
 -   **Step 1:** Clone the repository
 
--   **Step 2:** Generate the data by running Scripts/Psparse_Data.R and Scripts/Wsparse_Data.R
+-   **Step 2:** Generate the data by running Scripts/Psparse_Data.R, Scripts/Wsparse_Data.R and Scripts/WPsparse_Data.R
 
--   **Step 3:** Move to the demo folder and run the scripts CEC_PLS_SEM.R and SGCCA.R. Change the data directory in the files to run the scripts for both data generation schemes.
+-   **Step 3:** Move to the Demo folder and run the simulation scripts (TSPCA_Sim.R, SPCA_Sim.R, GPower_Sim.R, Seafar_Sim.R). Each script runs over all data-generation schemes in parallel.
 
 ## **Acknowledgements**
 
-This project is part of the Bachelor End Project and is submitted in partial fulfillment of the requirements of the degree of Bachelor of Science at Eindhoven University of Technology and Tilburg University under the supervision of Prof. Dr. Katrijn Van Deun. This publication is part of the project SEM2.0 (with project numbers 406.22.GO.022 and VI.C.231.092) of the Open Competition and Talent research programs financed by the Dutch Research Council (NWO), awarded to Prof. Dr. Katrijn Van Deun.
+This project started as a Bachelor End Project, submitted in partial fulfillment of the requirements of the degree of Bachelor of Science at Eindhoven University of Technology and Tilburg University under the supervision of Prof. Dr. Katrijn Van Deun. This publication is part of the project SEM2.0 (with project numbers 406.22.GO.022 and VI.C.231.092) of the Open Competition and Talent research programs financed by the Dutch Research Council (NWO), awarded to Prof. Dr. Katrijn Van Deun.
 
 ## Authors
 
