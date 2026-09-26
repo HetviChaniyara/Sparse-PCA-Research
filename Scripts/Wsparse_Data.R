@@ -39,9 +39,9 @@ design_matrix <- expand.grid( n_variables=n_variables,s_size=s_size,p_sparse=p_s
 
 design_matrix_replication <- design_matrix[rep(1:nrow(design_matrix), times = n_replications), ]
 
-Infor_simulation = list(n_data_sets = nrow(design_matrix_replication), n_replications  =n_replications,
+Info_simulation = list(n_data_sets = nrow(design_matrix_replication), n_replications  =n_replications,
                         design_matrix_replication = design_matrix_replication)
-save(Infor_simulation, file = "DATA-R-W-Sparse/Info_simulaiton.RData")
+save(Info_simulation, file = "DATA-R-W-Sparse/Info_simulation.RData")
 
 
 results_sim1_data1 <- foreach(i=1:nrow(design_matrix_replication),

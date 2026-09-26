@@ -6,8 +6,8 @@
 # Analysis", JMLR 11, 517-553, Section 3.2), plus a direct-cardinality
 # variant (gpower_block_cardinality()) so it can be dropped into the same
 # benchmark loops as elasticnet::spca(..., para = phi) and
-# CEC_PLS_SEM(..., phi = phi) elsewhere in this project (see
-# SPCA_Functions.R, Demo/Elastic_net.R, Demo/SPCA.R).
+# TSPCA(..., phi = phi) elsewhere in this project (see
+# TSPCA_Functions.R, Demo/SPCA_Sim.R, Demo/TSPCA_Sim.R).
 #
 # Problem solved by gpower_block_l0() (A = data, I x J, optionally
 # centered/scaled; U's columns orthonormal, I x R "generalized score
@@ -22,7 +22,7 @@
 # as a correctness check in test_gpower_block_l0.R.
 #
 # gpower_block_l0() returns $weights/$loadings/$scores in the same shape as
-# CEC_PLS_SEM() and elasticnet::spca(), so it drops into the existing
+# TSPCA() and elasticnet::spca(), so it drops into the existing
 # benchmark loops (align_components(), evaluate_variable_selection(),
 # compute_vaf()) unchanged.
 
@@ -86,7 +86,7 @@ gpower_gamma_reference <- function(X, R, center = TRUE, scale = FALSE) {
 #' @return list with:
 #'   \item{weights}{J x R matrix of unit-norm sparse loadings (Z)}
 #'   \item{loadings}{J x R orthonormal reconstruction loadings (P), obtained
-#'     as in Elastic_net.R: P = polar(X'X %*% weights)}
+#'     as in SPCA_Sim.R: P = polar(X'X %*% weights)}
 #'   \item{scores}{I x R matrix, X %*% weights}
 #'   \item{exp_var}{proportion of variance of X accounted for by weights/loadings}
 #'   \item{sparsity}{proportion of zero entries, per component}
@@ -184,12 +184,12 @@ gpower_block_l0 <- function(X, R, gamma, mu = 1, center = TRUE, scale = FALSE,
   scores <- A %*% Z
 
   # Reconstruction loadings via polar decomposition, matching the convention
-  # already used for the elastic-net benchmark in Elastic_net.R.
+  # already used for the elastic-net benchmark in SPCA_Sim.R.
   cross <- t(A) %*% A %*% Z
   svd_cross <- svd(cross)
   P <- svd_cross$u %*% t(svd_cross$v)
 
-  # Inlined rather than calling SPCA_Functions.R::compute_vaf(), so this file
+  # Inlined rather than calling TSPCA_Functions.R::compute_vaf(), so this file
   # has no source() ordering dependency; identical formula (1 - SSE/SST).
   X_hat <- A %*% Z %*% t(P)
   exp_var <- 1 - sum((A - X_hat)^2) / sum(A^2)
@@ -212,7 +212,7 @@ gpower_block_l0 <- function(X, R, gamma, mu = 1, center = TRUE, scale = FALSE,
 #' support is chosen by DIRECTLY selecting the largest-magnitude mu-weighted
 #' correlations up to an exact nonzero budget phi, instead of a continuous
 #' gamma threshold -- mirroring \code{apply_cardinality()} in
-#' SPCA_Functions.R, right down to the same vocabulary: "per_component"
+#' TSPCA_Functions.R, right down to the same vocabulary: "per_component"
 #' ranks each column separately and keeps exactly phi_j per column;
 #' "total" ranks all J*R entries of the weight matrix together and keeps
 #' only the phi largest overall, letting components compete freely for the
@@ -238,7 +238,7 @@ gpower_block_l0 <- function(X, R, gamma, mu = 1, center = TRUE, scale = FALSE,
 #'   by whichever correlations are largest.
 #' @param cardinality_type "per_component" (default) or "total". As already
 #'   noted for \code{apply_cardinality()}'s "total" mode in
-#'   SPCA_Functions.R, ranking the whole matrix together CAN starve a
+#'   TSPCA_Functions.R, ranking the whole matrix together CAN starve a
 #'   component down to zero nonzero entries if its correlations are
 #'   uniformly weaker than the others' -- this function stops with an
 #'   informative error in that case rather than silently returning a
@@ -259,7 +259,7 @@ gpower_block_l0 <- function(X, R, gamma, mu = 1, center = TRUE, scale = FALSE,
 #' argument (item (i,j)'s value never depends on what else is chosen, so
 #' greedy-by-value is optimal), the same rule
 #' \code{apply_cardinality(..., "total")} already applies to a weight
-#' update in SPCA_Functions.R, here applied to the correlations instead.
+#' update in TSPCA_Functions.R, here applied to the correlations instead.
 #'
 #' @return same shape as \code{\link{gpower_block_l0}}, plus \code{$phi} and
 #'   \code{$cardinality_type} echoing what was requested.

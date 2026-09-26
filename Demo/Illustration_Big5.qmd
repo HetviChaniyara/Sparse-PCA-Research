@@ -117,7 +117,7 @@ PVEseafa
 
 The obtained solution is sparse and has -upto rounding - same PVE as the PCA solution (which has the highest PVE by definition).
 
-As an alternative to CEC-PLS-SEM, one might consider using the obtained loadings as the weights when calculating the factor scores (with proper scaling so that the scores have variance equal to one as assumed in the seafar model). To legitimize the use of TSPCA, the proportion of variance explained by this solution should be lower.
+As an alternative to TSPCA, one might consider using the obtained loadings as the weights when calculating the factor scores (with proper scaling so that the scores have variance equal to one as assumed in the seafar model). To legitimize the use of TSPCA, the proportion of variance explained by this solution should be lower.
 
 ```{r}
 # Calculate factor scores with seafar loadings 
@@ -190,12 +190,12 @@ for (i in 1:5){
 
 ```
 
-The PVE for spca is higher than for the approach with sparse loadings (as can be expected). Yet, stability of the weights is an issue.
+The PVE for spca is higher than for the approach with sparse loadings (as can be expected). Yet, stability of the weights is an issue, for spca as well as for gpower (see the resampling analysis below).
 
 # W = P analysis
 
 ```{r}
-source("../Scripts/SPCA_Functions.R")
+source("../Scripts/TSPCA_Functions.R")
 epsilon <- 1e-8
 phi <- nrnonzero #number of nonzero loadings, per component: 48 items per trait
 ###set penalty to balance fit with penalty
@@ -205,20 +205,20 @@ rho <- sum(OceanData^2)/R #||X-XWP'||^2 is max ||X||^2 while ||W-P||^2 is max R
 # in EACH of the 5 components -- the global/matrix-wide budget used elsewhere in
 # this codebase gives no such guarantee and could in principle starve a trait of
 # nonzero weights entirely (which would abort with "zero column in W").
-out_pwsparse <- NULL; best_loss <- Inf
+out_tspca <- NULL; best_loss <- Inf
 INIT <- PW
 for (m in 1:20) {
   set.seed(100 + m)
-  res <- CEC_PLS_SEM(OceanData, INIT, R, 1e-8, phi=48, rho, constrained=1, MaxIter=200,  cardinality_type = "per_component")
+  res <- TSPCA(OceanData, INIT, R, 1e-8, phi=48, rho, constrained=1, MaxIter=200,  cardinality_type = "per_component")
   if (res$Residual < best_loss)
-  { best_loss <- res$Residual; out_pwsparse <- res }
+  { best_loss <- res$Residual; out_tspca <- res }
 }
 
-PVEpwsparse <- 1-out_pwsparse$Residual
+PVEtspca <- 1-out_tspca$Residual
 #round(cbind(X,xhat),4)
-round(cbind(out_pwsparse$weights[,1:2],out_pwsparse$loadings[,1:2]),3)
-PVEpwsparse
-Xhat_tspca <- (OceanData%*%out_pwsparse$weights)%*%t(out_pwsparse$loadings)
+round(cbind(out_tspca$weights[,1:2],out_tspca$loadings[,1:2]),3)
+PVEtspca
+Xhat_tspca <- (OceanData%*%out_tspca$weights)%*%t(out_tspca$loadings)
 1-(sum((OceanData-Xhat_tspca)^2))/ssx
 
 #Check of design, as done above for seafar and spca: do items designed for a
@@ -227,7 +227,7 @@ Xhat_tspca <- (OceanData%*%out_pwsparse$weights)%*%t(out_pwsparse$loadings)
 L <- 1
 U <- L+47
 for (i in 1:5){
-  print(colSums(out_pwsparse$weights[L:U,]!=0))
+  print(colSums(out_tspca$weights[L:U,]!=0))
   L <- U+1
   U <- L+47
 }
@@ -243,11 +243,11 @@ nrreplic <- 10
 seafarLoadings <- c()
 spcaweights <- c()
 gpowerweights <- c()
-wpweights <- c()
+tspcaweights <- c()
 spcazero <- matrix(0, nrow = J, ncol = R)
 seafarzero <- matrix(0, nrow = J, ncol = R)
 gpowerzero <- matrix(0, nrow = J, ncol = R)
-wpZERO <- matrix(0, nrow = J, ncol = R)
+tspcazero <- matrix(0, nrow = J, ncol = R)
 
 #creation of reference pattern
 RefPattern <- matrix(0, nrow = J, ncol = R)
@@ -267,7 +267,7 @@ for (replic in 1:nrreplic){   # Noise
   spca_aligned <- align_to_zero_pattern(out_spca$loadings, RefPattern)$aligned
   spcaweights <- cbind(spcaweights, spca_aligned)
   spcazero <- spcazero+(spca_aligned==0)
-  out_gpower <- gpower_block_cardinality(X=OceanData, R, phi=5*48, mu = 1,cardinality_type = "total", center = TRUE, scale = FALSE,max_iter = 1000, tol = 1e-4, verbose = FALSE)
+  out_gpower <- gpower_block_cardinality(X=SampleData, R, phi=5*48, mu = 1,cardinality_type = "total", center = TRUE, scale = FALSE,max_iter = 1000, tol = 1e-4, verbose = FALSE)
   gpower_aligned <- align_to_zero_pattern(out_gpower$weights, RefPattern)$aligned
   gpowerweights <- cbind(gpowerweights, gpower_aligned)
   gpowerzero <- gpowerzero+(gpower_aligned==0)
@@ -276,40 +276,40 @@ for (replic in 1:nrreplic){   # Noise
   seafar_aligned <- align_to_zero_pattern(out_seafa$loadings, RefPattern)$aligned
   seafarLoadings <- cbind(seafarLoadings, seafar_aligned)  
   seafarzero <- seafarzero+(seafar_aligned==0) 
-  out_pwsparse <- CEC_PLS_SEM(SampleData, PW, R, epsilon, phi=5*48,rho, constrained = 1, MaxIter=200,cardinality_type = "total")
-  wp_aligned <- align_to_zero_pattern(out_pwsparse$weights, RefPattern)$aligned
-  wpweights <- cbind(wpweights, wp_aligned)
-  wpZERO <- wpZERO+(wp_aligned==0)
+  out_tspca <- TSPCA(SampleData, PW, R, epsilon, phi=5*48,rho, constrained = 1, MaxIter=200,cardinality_type = "total")
+  tspca_aligned <- align_to_zero_pattern(out_tspca$weights, RefPattern)$aligned
+  tspcaweights <- cbind(tspcaweights, tspca_aligned)
+  tspcazero <- tspcazero+(tspca_aligned==0)
 }
 
 ```
 
-Here below we calculate in how many of the resamples zero weights were zero and nonzero weights nonzero. The results indicated that TSPCA yields very stable results (approximately 240 loadings are zero in each resample and 960 are nonzero in each resample) while spca is very unstable (very few loadings are consistently zero or nonzero over the resamples).
+Here below we calculate, for each method, the percentage of the 1200 weights (loadings for seafar) that had the same zero/nonzero status in all resamples. TSPCA yields very stable results (98.5%; approximately 960 weights are zero and 240 are nonzero in each resample), followed by the sparse loadings approach seafar (89.9%). The two sparse weights methods are much less stable: gpower (60.3%) and spca (55.5%) show consistent zero/nonzero status for little more than half of the weights.
 
 ```{r}
 # Per-component variance across resamples (not pooled across components)
 spca_var_by_comp <- sapply(1:R, function(r) apply(spcaweights[, seq(r, R*nrreplic, by = R)], 1, var))
-wp_var_by_comp   <- sapply(1:R, function(r) apply(wpweights[,   seq(r, R*nrreplic, by = R)], 1, var))
-colnames(spca_var_by_comp) <- colnames(wp_var_by_comp) <- paste0("Comp", 1:R)
+tspca_var_by_comp   <- sapply(1:R, function(r) apply(tspcaweights[,   seq(r, R*nrreplic, by = R)], 1, var))
+colnames(spca_var_by_comp) <- colnames(tspca_var_by_comp) <- paste0("Comp", 1:R)
 cat("Mean per-item weight variance across resamples, by component:\n")
 cat("spca: "); print(round(colMeans(spca_var_by_comp), 4))
-cat("TSPCA: "); print(round(colMeans(wp_var_by_comp), 4))
+cat("TSPCA: "); print(round(colMeans(tspca_var_by_comp), 4))
 
 ###COMPARE ON ZERO/NONZERO STATUS (scale-free: does each entry keep the same
 ### zero/nonzero status across all nrreplic resamples?)
-sum(wpZERO==0)
-sum(wpZERO==nrreplic)
+sum(tspcazero==0)
+sum(tspcazero==nrreplic)
 
 sum(spcazero==0)
 sum(spcazero==nrreplic)
 
 # Same information as a single stability rate per method, easier to report directly:
 cat(sprintf("TSPCA: %.1f%% of weights had unanimous zero/nonzero status across resamples\n",
-            100 * (sum(wpZERO==0) + sum(wpZERO==nrreplic)) / length(wpZERO)))
-cat(sprintf("spca:  %.1f%% of loadings had unanimous zero/nonzero status across resamples\n",
+            100 * (sum(tspcazero==0) + sum(tspcazero==nrreplic)) / length(tspcazero)))
+cat(sprintf("spca:  %.1f%% of weights had unanimous zero/nonzero status across resamples\n",
             100 * (sum(spcazero==0) + sum(spcazero==nrreplic)) / length(spcazero)))
 cat(sprintf("seafar:  %.1f%% of loadings had unanimous zero/nonzero status across resamples\n",
             100 * (sum(seafarzero==0) + sum(seafarzero==nrreplic)) / length(seafarzero)))
-cat(sprintf("gpower:  %.1f%% of loadings had unanimous zero/nonzero status across resamples\n",
+cat(sprintf("gpower:  %.1f%% of weights had unanimous zero/nonzero status across resamples\n",
             100 * (sum(gpowerzero==0) + sum(gpowerzero==nrreplic)) / length(gpowerzero)))
 ```
